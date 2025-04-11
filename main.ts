@@ -101,8 +101,8 @@ async function main() {
     process.exit(1);
   }
 
-  const startDate = new Date('2024-01-01T00:00:00Z');
-  const endDate = new Date('2025-02-01T00:00:00Z');
+  const startDate = new Date('2024-01-01T00:00:00Z'); // Adjust the start date as needed
+  const endDate = new Date('2025-02-01T00:00:00Z'); // Adjust the end date as needed
 
   try {
     const headers = {

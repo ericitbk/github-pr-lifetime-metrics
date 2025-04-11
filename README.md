@@ -37,8 +37,8 @@ In your code, configure the following parameters:
 
 ```typescript
 // Date range for the statistics
-const startDate = "2023-01-01"; // start date range
-const endDate = "2023-12-31"; // end date range
+const startDate = "2024-01-01T00:00:00Z"; // start date range ISO 8601 format
+const endDate = "2024-01-01T00:00:00Z"; // end date range ISO 8601 format
 
 // GitHub owner (organization or individual username)
 const owner = "your-organization-or-username";
