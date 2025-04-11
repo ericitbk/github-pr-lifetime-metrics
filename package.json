@@ -1,0 +1,17 @@
+{
+  "name": "github-pr-stats",
+  "version": "1.0.0",
+  "description": "A simple Node.js script to fetch and display GitHub PR statistics.",
+  "dependencies": {
+    "@types/node-fetch": "^2.6.12",
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2",
+    "typescript": "^5.8.2"
+  },
+  "main": "main.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC"
+}
