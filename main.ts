@@ -19,7 +19,7 @@ async function getGitHubPrMetrics(
   token: string,
   startDate: Date,
   endDate: Date
-): Promise<[number[], number[]]> {
+): Promise<[number[], number[], number[]]> {
   const headers = {
     Authorization: `token ${token}`,
     Accept: 'application/vnd.github+json',
@@ -47,6 +47,8 @@ async function getGitHubPrMetrics(
 
   const reviewTimes: number[] = [];
   const mergeTimes: number[] = [];
+  const reviewCycleTimes: number[] = [];
+
   for (const pr of allPullRequests) {
     const createdAt = new Date(pr.created_at);
     const mergedAt = pr.merged_at ? new Date(pr.merged_at) : null;
@@ -77,11 +79,15 @@ async function getGitHubPrMetrics(
       if (reviews && reviews.length > 0) {
         const firstReviewTime = new Date(reviews[0].submitted_at);
         reviewTimes.push((firstReviewTime.getTime() - createdAt.getTime()) / 1000);
+
+        if (mergedAt) {
+          reviewCycleTimes.push((mergedAt.getTime() - firstReviewTime.getTime()) / 1000);
+        }
       }
     }
   }
 
-  return [reviewTimes, mergeTimes];
+  return [reviewTimes, mergeTimes, reviewCycleTimes];
 }
 
 function calculateAverageTime(timeList: number[]): number {
@@ -101,9 +107,6 @@ async function main() {
     process.exit(1);
   }
 
-  const startDate = new Date('2024-01-01T00:00:00Z'); // Adjust the start date as needed
-  const endDate = new Date('2025-02-01T00:00:00Z'); // Adjust the end date as needed
-
   try {
     const headers = {
       Authorization: `token ${token}`,
@@ -111,97 +114,42 @@ async function main() {
       'X-GitHub-Api-Version': '2022-11-28',
     };
 
-    const allPullRequests: PullRequest[] = [];
-
-    // Fetch all pull requests first
+    // Calculate and log averages for each repository using its lifetime
     for (const repo of repositories) {
-      let url: string | null = `https://api.github.com/repos/${owner}/${repo}/pulls?state=closed&per_page=100`;
-      while (url) {
-        const response = await fetch(url, { headers });
-        if (!response.ok) {
-          if (response.status === 404) {
-            console.log(`Repository not found: ${url}`);
-            break;
-          } else {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-        }
-        const pullRequests = await response.json() as PullRequest[];
-        allPullRequests.push(...pullRequests);
+      // Fetch repository details to get its creation date
+      const repoUrl = `https://api.github.com/repos/${owner}/${repo}`;
+      const repoResponse = await fetch(repoUrl, { headers });
 
-        const linkHeader = response.headers.get('Link');
-        if (linkHeader && linkHeader.includes('rel="next"')) {
-          const nextUrlMatch = linkHeader.match(/<([^>]+)>; rel="next"/);
-          url = nextUrlMatch ? nextUrlMatch[1] : null;
+      if (!repoResponse.ok) {
+        if (repoResponse.status === 404) {
+          console.log(`\nRepository not found: ${repo}. Skipping.`);
+          continue; // Skip to the next repository
         } else {
-          url = null;
+          // Throw error for other issues
+          throw new Error(`HTTP error fetching repo details for ${repo}! status: ${repoResponse.status}`);
         }
       }
-    }
 
-    if (allPullRequests.length === 0) {
-      console.log('No pull requests found. Exiting.');
-      return;
-    }
+      const repoDetails = await repoResponse.json();
+      const startDate = new Date(repoDetails.created_at); // Use repo creation date as start
+      const endDate = new Date(); // Use current time as end date
 
-    const detailedMetrics: { prNumber: number; reviewTime: number | null; mergeTime: number | null; repo: string }[] = [];
+      // Fetch metrics for this specific repository using its lifetime dates
+      const [reviewTimes, mergeTimes, reviewCycleTimes] = await getGitHubPrMetrics(owner, repo, token, startDate, endDate);
 
-    // Process each pull request to gather detailed metrics
-    for (const pr of allPullRequests) {
-      const createdAt = new Date(pr.created_at);
-      const mergedAt = pr.merged_at ? new Date(pr.merged_at) : null;
-
-      if (createdAt >= startDate && createdAt <= endDate) {
-        let reviewTime: number | null = null;
-        let mergeTime: number | null = null;
-
-        if (mergedAt) {
-          mergeTime = (mergedAt.getTime() - createdAt.getTime()) / 1000;
-        }
-        const repoName = pr.head?.repo?.name;
-        if (!repoName) {
-          console.log(`Warning: Repo name not found for PR #${pr.number}. Skipping detailed metrics.`);
-          detailedMetrics.push({ prNumber: pr.number, reviewTime: null, mergeTime: mergeTime, repo: 'N/A' });
+      if (reviewTimes.length === 0 && mergeTimes.length === 0 && reviewCycleTimes.length === 0) {
+          console.log(`No pull requests found within the specified lifetime for ${repo}.`);
           continue;
-        }
-        const reviewUrl = `https://api.github.com/repos/${owner}/${repoName}/pulls/${pr.number}/reviews`;
-        const reviewResponse = await fetch(reviewUrl, { headers });
-
-        if (!reviewResponse.ok) {
-          if (reviewResponse.status === 404) {
-            console.log(`Review not found for PR #${pr.number} in ${repoName}`);
-            continue;
-          } else {
-            throw new Error(`HTTP error! status: ${reviewResponse.status}`);
-          }
-        }
-
-        const reviews = await reviewResponse.json() as Review[];
-
-        if (reviews && reviews.length > 0) {
-          const firstReviewTime = new Date(reviews[0].submitted_at);
-          reviewTime = (firstReviewTime.getTime() - createdAt.getTime()) / 1000;
-        }
-        detailedMetrics.push({ prNumber: pr.number, reviewTime, mergeTime, repo: repoName });
       }
-    }
 
-    // Log individual PR metrics (if needed)
-    // for (const metric of detailedMetrics) {
-    //   console.log(`PR #${metric.prNumber}:`);
-    //   console.log(` Repo: ${metric.repo}`);
-    //   console.log(` Time to first review: ${metric.reviewTime ? (metric.reviewTime / 3600).toFixed(2) + ' hours' : 'N/A'}`);
-    //   console.log(` Time to merge: ${metric.mergeTime ? (metric.mergeTime / 3600).toFixed(2) + ' hours' : 'N/A'}`);
-    // }
-
-    // Calculate and log averages for each repository
-    for (const repo of repositories) {
-      const [reviewTimes, mergeTimes] = await getGitHubPrMetrics(owner, repo, token, startDate, endDate);
       const avgReviewTime = calculateAverageTime(reviewTimes);
       const avgMergeTime = calculateAverageTime(mergeTimes);
+      const avgReviewCycleTime = calculateAverageTime(reviewCycleTimes);
 
-      console.log(`\nCumulative average time for ${repo} pr first review: ${avgReviewTime / 3600} hours`);
-      console.log(`Cumulative average time for ${repo} pr merge: ${avgMergeTime / 3600} hours`);
+      console.log(` Metrics for repository: ${repo} (from ${startDate.toISOString().split('T')[0]} to ${endDate.toISOString().split('T')[0]})` );
+      console.log(`  Average time to first review: ${(avgReviewTime / 3600).toFixed(2)} hours`);
+      console.log(`  Average time to merge: ${(avgMergeTime / 3600).toFixed(2)} hours`);
+      console.log(`  Average review cycle time (first review to merge): ${(avgReviewCycleTime / 3600).toFixed(2)} hours`);
     }
   } catch (error) {
     console.error('An error occurred:', error);
