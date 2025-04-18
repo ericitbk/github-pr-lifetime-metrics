@@ -21,8 +21,8 @@ The time range for analysis automatically spans from the creation date of each r
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/ericitbk/github-pr-stats
-    cd github-pr-stats
+    git clone https://github.com/ericitbk/github-pr-lifetime-metrics
+    cd github-pr-lifetime-metrics
     ```
 2.  **Install dependencies:**
     ```bash
